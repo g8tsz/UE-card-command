@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Reorder Command Formatter</title>
+  <link rel="icon" type="image/x-icon" href="/images/394.png">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    input[type="text"] { width: 400px; }
+    .radio-group { display: flex; gap: 1rem; align-items: center; }
+    .clear-btn { margin-bottom: 1rem; }
+    .error { color: red; font-size: 0.9rem; margin-left: 0.5rem; }
+    .inline-copy { display: flex; align-items: center; gap: 0.5rem; }
+    .parser-box { margin-bottom: 1rem; }
+    #formInput { width: 400px; height: 75px; display: block; margin-bottom: 0.5rem; resize: both; min-width: 400px; min-height: 75px; }
+    .output-box { resize: both; min-width: 400px; min-height: 100px; width: 100%; height: 150px; }
+  </style>
+</head>
+<body>
+  <nav class="main-nav">
+    <div class="nav-container">
+      <a href="order.html" class="nav-link">New Order</a>
+      <a href="reorder.html" class="nav-link active">Reorder</a>
+    </div>
+  </nav>
+
+  <div class="container">
+    <h2>UE Reorder Command Formatter</h2>
+    <button class="clear-btn" onclick="clearAll()">Clear All</button>
+
+    <!-- Parser -->
+    <div class="form-section">
+      <label>Paste Form Here:</label>
+      <textarea id="formInput" class="parser-box" placeholder="Paste ticket form here..."></textarea>
+      <div class="parse-btn-container">
+        <button class="parse-btn" onclick="parseFormInput()">Parse</button>
+      </div>
+    </div>
+
+    <!-- Required Fields -->
+    <div class="form-section">
+      <label>Group Link:</label>
+      <input type="text" id="groupLink" class="text-input" oninput="updateCommand()">
+      <span id="linkError" class="error"></span>
+    </div>
+    <div class="form-section">
+      <label>Email:</label>
+      <div class="inline-copy">
+        <input type="text" id="email" class="text-input" oninput="updateCommand()">
+        <button class="copy-btn" onclick="copyToClipboard('email')">Copy</button>
+      </div>
+      <span id="emailError" class="error"></span>
+    </div>
+
+    <div class="form-section">
+      <label>Identifier:</label>
+      <div class="radio-group">
+        <label><input type="radio" name="identifier" value="Select" checked onchange="updateCommand()"> Select</label>
+        <label><input type="radio" name="identifier" value="Any" onchange="updateCommand()"> Any</label>
+      </div>
+    </div>
+
+    <!-- Overrides -->
+    <div class="form-section">
+      <label>Name:</label>
+      <input type="text" id="overrideName" class="text-input" oninput="updateCommand()">
+    </div>
+    <div class="form-section">
+      <label>Address Line 2:</label>
+      <input type="text" id="overrideApt" class="text-input" oninput="updateCommand()">
+    </div>
+    <div class="form-section">
+      <label>Delivery Notes:</label>
+      <input type="text" id="overrideNotes" class="text-input" oninput="updateCommand()">
+    </div>
+    <div class="form-section">
+      <label class="checkbox-label">
+        <input type="checkbox" id="leaveAtDoor" onchange="updateCommand()">
+        Dropoff: Leave at Door
+      </label>
+    </div>
+
+    <!-- Output -->
+    <div class="form-section">
+      <label>Command Output:</label>
+      <div class="output-container">
+        <textarea id="commandOutput" class="output-box" readonly></textarea>
+        <button class="copy-btn" onclick="copyToClipboard('commandOutput')">Copy Command</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const leavePattern = /\bleave(?:\s+at(?:\s+the)?\s+door)?\b/i;
+
+    function parseFormInput() {
+      const lines = document.getElementById('formInput').value.trim()
+        .split('\n').map(l => l.trim().replace(/:$/, ''));
+
+      const map = {
+        'Group Cart Link': 'groupLink',
+        'Name':            'overrideName',
+        'Address Line 2':  'overrideApt',
+        'Delivery Notes':  'overrideNotes'
+      };
+      for (let i = 0; i < lines.length - 1; i++) {
+        const key = lines[i], val = lines[i+1];
+        if (map[key] && val && val !== 'N/A') {
+          document.getElementById(map[key]).value = val;
+          i++;
+        }
+      }
+
+      // **Name split: comma → space**
+      const nameField = document.getElementById('overrideName');
+      if (/^[^,]+,\s*[^,]+$/.test(nameField.value)) {
+        nameField.value = nameField.value.replace(/,\s*/, ' ');
+      }
+
+      updateCommand();
+      document.getElementById('overrideNotes').dispatchEvent(new Event('input'));
+    }
+
+    function isValidEmail(e) {
+      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+    }
+    function isValidUrl(u) {
+      try { new URL(u); return true; } catch { return false; }
+    }
+
+    function updateCommand() {
+      const link  = document.getElementById('groupLink').value.trim();
+      const email = document.getElementById('email').value.trim();
+      const name  = document.getElementById('overrideName').value.trim();
+      const apt   = document.getElementById('overrideApt').value.trim();
+      const notes = document.getElementById('overrideNotes').value.trim();
+
+      // auto-check Leave at Door
+      if (leavePattern.test(notes)) {
+        document.getElementById('leaveAtDoor').checked = true;
+      }
+      const leave = document.getElementById('leaveAtDoor').checked;
+
+      let identifier = 'Select';
+      for (const r of document.getElementsByName('identifier')) {
+        if (r.checked) { identifier = r.value; break; }
+      }
+
+      ['linkError','emailError'].forEach(id => document.getElementById(id).innerText = '');
+
+      let valid = true;
+      if (!link || !isValidUrl(link)) {
+        document.getElementById('linkError').innerText = 'Valid group link required';
+        valid = false;
+      }
+      if (!email || !isValidEmail(email)) {
+        document.getElementById('emailError').innerText = 'Valid email required';
+        valid = false;
+      }
+
+      let cmd = '';
+      if (valid) {
+        cmd = `/reorder uber order_details:${link},${email}`;
+        if (name)  cmd += ` override_name:${name}`;
+        if (leave) cmd += ` override_dropoff:Leave at Door`;
+        if (apt)   cmd += ` override_aptorsuite:${apt}`;
+        if (notes) cmd += ` override_notes:${notes}`;
+      }
+      cmd += ` identifier:${identifier}`;
+
+      document.getElementById('commandOutput').value = cmd;
+    }
+
+    document.getElementById('overrideNotes')
+      .addEventListener('input', () => updateCommand());
+
+    function copyToClipboard(id) {
+      const el = document.getElementById(id);
+      el.select(); document.execCommand('copy');
+      const btn = document.querySelector(`button[onclick="copyToClipboard('${id}')"]`);
+      btn.classList.add('copied');
+      setTimeout(() => btn.classList.remove('copied'), 3000);
+    }
+
+    function clearAll() {
+      ['formInput','groupLink','email','overrideName','overrideApt','overrideNotes']
+        .forEach(i => document.getElementById(i).value = '');
+      document.getElementById('leaveAtDoor').checked = false;
+      document.getElementById('commandOutput').value = '';
+      ['linkError','emailError'].forEach(id => document.getElementById(id).innerText = '');
+    }
+  </script>
+</body>
+</html>
